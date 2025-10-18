@@ -11,7 +11,7 @@ app.use(express.json());
 app.use(cors());
 
 // ============ MONGODB CONNECTION ============
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vocabulary', {
+mongoose.connect('mongodb+srv://ankidb:ankidb@cluster0.wazwmuh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
     useNewUrlParser: true,
     useUnifiedTopology: true
 });
