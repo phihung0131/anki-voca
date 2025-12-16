@@ -9,9 +9,11 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 app.use(cors());
+app.use(express.static('public')); // Serve static files
 
 // ============ MONGODB CONNECTION ============
-mongoose.connect('mongodb+srv://ankidb:ankidb@cluster0.wazwmuh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/vocabulary';
+mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 });
@@ -128,6 +130,117 @@ app.get('/api/collocations', async (req, res) => {
         res.json({ status: 'success', count: data.length, data });
     } catch (error) {
         console.error('❌ Error fetching:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// 6. Generate collocations (gọi AI API)
+app.post('/api/generate', async (req, res) => {
+    try {
+        const { words } = req.body;
+        if (!Array.isArray(words) || words.length === 0) {
+            return res.status(400).json({ status: 'error', message: 'Cần gửi array words' });
+        }
+
+        // Đọc API key
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return res.status(500).json({ status: 'error', message: 'API key chưa được cấu hình' });
+        }
+
+        // Tạo prompt
+        const prompt = `
+Tạo collocations cho danh sách từ sau: ${words.map(w => `"${w}"`).join(", ")}
+
+Yêu cầu:
+1. Với mỗi từ, tạo 1-5 collocations phổ biến nhất
+2. Trả về JSON:
+{
+    "results": [
+        {
+            "collocation": "strong coffee",
+            "ipa": "/strɒŋ ˈkɒfi/",
+            "meaning": "cà phê đậm đà",
+            "synonyms": "intense coffee"
+        }, ...
+    ]
+}
+`;
+
+        // Gọi Gemini API
+        const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+
+        const aiData = await aiResponse.json();
+        const text = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!text) {
+            return res.status(500).json({ status: 'error', message: 'Không nhận được phản hồi từ AI' });
+        }
+
+        // Parse JSON
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            return res.status(500).json({ status: 'error', message: 'Không tìm thấy JSON trong response' });
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const collocations = parsed.results || [];
+
+        // Lưu vào database
+        if (collocations.length > 0) {
+            await Collocation.insertMany(collocations, { ordered: false }).catch(err => {
+                if (err.code !== 11000) throw err; // Ignore duplicates
+            });
+        }
+
+        res.json({ status: 'success', count: collocations.length, message: `Đã tạo ${collocations.length} collocations` });
+    } catch (error) {
+        console.error('❌ Error generating:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// 7. Lưu API key
+app.post('/api/save-apikey', async (req, res) => {
+    try {
+        const { apiKey } = req.body;
+        if (!apiKey) {
+            return res.status(400).json({ status: 'error', message: 'Cần gửi apiKey' });
+        }
+
+        // Lưu vào .env file
+        let envContent = '';
+        if (fs.existsSync('.env')) {
+            envContent = fs.readFileSync('.env', 'utf8');
+        }
+
+        // Update hoặc thêm GEMINI_API_KEY
+        const lines = envContent.split('\n');
+        let found = false;
+        const newLines = lines.map(line => {
+            if (line.startsWith('GEMINI_API_KEY=')) {
+                found = true;
+                return `GEMINI_API_KEY=${apiKey}`;
+            }
+            return line;
+        });
+
+        if (!found) {
+            newLines.push(`GEMINI_API_KEY=${apiKey}`);
+        }
+
+        fs.writeFileSync('.env', newLines.join('\n'));
+        process.env.GEMINI_API_KEY = apiKey; // Update runtime
+
+        res.json({ status: 'success', message: 'Đã lưu API key' });
+    } catch (error) {
+        console.error('❌ Error saving API key:', error.message);
         res.status(500).json({ status: 'error', message: error.message });
     }
 });

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocabulary Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-md mx-auto p-4">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg p-6 mb-4">
+            <h1 class="text-2xl font-bold">📚 Vocabulary Manager</h1>
+            <p class="text-sm opacity-90">Quản lý từ vựng của bạn</p>
+        </div>
+
+        <!-- Status Alert -->
+        <div id="alert" class="hidden mb-4 p-4 rounded-lg"></div>
+
+        <!-- Add Word Section -->
+        <div class="bg-white rounded-lg shadow p-4 mb-4">
+            <h2 class="text-lg font-semibold mb-3">➕ Thêm từ</h2>
+            <input type="text" id="wordInput" placeholder="Nhập từ tiếng Anh"
+                   class="w-full px-4 py-2 border rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="addWord()"
+                    class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
+                Thêm vào queue
+            </button>
+        </div>
+
+        <!-- Queue Section -->
+        <div class="bg-white rounded-lg shadow p-4 mb-4">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-lg font-semibold">📝 Hàng đợi (<span id="queueCount">0</span>)</h2>
+                <button onclick="loadQueue()" class="text-blue-600 text-sm">🔄 Refresh</button>
+            </div>
+            <div id="queueList" class="space-y-2 mb-3 max-h-60 overflow-y-auto"></div>
+            <button onclick="generateCollocations()" id="genBtn"
+                    class="w-full bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 disabled:bg-gray-400">
+                🤖 Generate Collocations
+            </button>
+        </div>
+
+        <!-- Actions -->
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <button onclick="exportCSV()"
+                    class="bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700">
+                📥 Export CSV
+            </button>
+            <button onclick="deleteAll()"
+                    class="bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700">
+                🗑️ Xóa tất cả
+            </button>
+        </div>
+
+        <!-- Settings Section -->
+        <div class="bg-white rounded-lg shadow p-4">
+            <h2 class="text-lg font-semibold mb-3">⚙️ Cài đặt</h2>
+            <label class="block text-sm font-medium mb-2">Google AI API Key:</label>
+            <input type="password" id="apiKeyInput" placeholder="AIza..."
+                   class="w-full px-4 py-2 border rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="saveApiKey()"
+                    class="w-full bg-gray-700 text-white py-2 rounded-lg font-medium hover:bg-gray-800">
+                💾 Lưu API Key
+            </button>
+            <p class="text-xs text-gray-500 mt-2">
+                Lấy API key từ <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600">Google AI Studio</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let queue = [];
+        const API_BASE = '';
+
+        // Show alert
+        function showAlert(message, type = 'info') {
+            const alert = document.getElementById('alert');
+            const colors = {
+                success: 'bg-green-100 text-green-800 border-green-300',
+                error: 'bg-red-100 text-red-800 border-red-300',
+                info: 'bg-blue-100 text-blue-800 border-blue-300'
+            };
+            alert.className = `p-4 rounded-lg border ${colors[type] || colors.info}`;
+            alert.textContent = message;
+            alert.classList.remove('hidden');
+            setTimeout(() => alert.classList.add('hidden'), 3000);
+        }
+
+        // Add word to queue
+        async function addWord() {
+            const word = document.getElementById('wordInput').value.trim();
+            if (!word) return showAlert('Vui lòng nhập từ', 'error');
+
+            if (!/^[a-zA-Z\s-]+$/.test(word)) {
+                return showAlert('Chỉ nhập chữ tiếng Anh', 'error');
+            }
+
+            // Check if exists
+            try {
+                const res = await fetch(`${API_BASE}/api/check-word`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word })
+                });
+                const data = await res.json();
+                if (data.exists) {
+                    return showAlert('Từ đã tồn tại trong database', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+            }
+
+            // Add to queue
+            if (!queue.includes(word)) {
+                queue.push(word);
+                document.getElementById('wordInput').value = '';
+                loadQueue();
+                showAlert(`Đã thêm "${word}"`, 'success');
+            } else {
+                showAlert('Từ đã có trong queue', 'error');
+            }
+        }
+
+        // Load queue
+        function loadQueue() {
+            const list = document.getElementById('queueList');
+            const count = document.getElementById('queueCount');
+            const genBtn = document.getElementById('genBtn');
+
+            count.textContent = queue.length;
+            genBtn.disabled = queue.length === 0;
+
+            if (queue.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Chưa có từ nào</p>';
+                return;
+            }
+
+            list.innerHTML = queue.map((word, idx) => `
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded">
+                    <span class="font-medium">${word}</span>
+                    <button onclick="removeWord(${idx})" class="text-red-600 hover:text-red-800">✕</button>
+                </div>
+            `).join('');
+        }
+
+        // Remove word
+        function removeWord(idx) {
+            queue.splice(idx, 1);
+            loadQueue();
+        }
+
+        // Generate collocations
+        async function generateCollocations() {
+            if (queue.length === 0) return;
+
+            const genBtn = document.getElementById('genBtn');
+            genBtn.disabled = true;
+            genBtn.textContent = '⏳ Đang xử lý...';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ words: queue })
+                });
+
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showAlert(`Đã tạo ${data.count} collocations!`, 'success');
+                    queue = [];
+                    loadQueue();
+                } else {
+                    showAlert('Lỗi: ' + data.message, 'error');
+                }
+            } catch (err) {
+                showAlert('Lỗi kết nối: ' + err.message, 'error');
+            } finally {
+                genBtn.disabled = false;
+                genBtn.textContent = '🤖 Generate Collocations';
+            }
+        }
+
+        // Save API key
+        async function saveApiKey() {
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (!apiKey) return showAlert('Vui lòng nhập API key', 'error');
+
+            if (!apiKey.startsWith('AIza')) {
+                return showAlert('API key phải bắt đầu với "AIza"', 'error');
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/save-apikey`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey })
+                });
+
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showAlert('Đã lưu API key!', 'success');
+                    document.getElementById('apiKeyInput').value = '';
+                } else {
+                    showAlert('Lỗi: ' + data.message, 'error');
+                }
+            } catch (err) {
+                showAlert('Lỗi kết nối: ' + err.message, 'error');
+            }
+        }
+
+        // Export CSV
+        async function exportCSV() {
+            try {
+                window.location.href = `${API_BASE}/api/export-csv`;
+                showAlert('Đang tải CSV...', 'info');
+            } catch (err) {
+                showAlert('Lỗi: ' + err.message, 'error');
+            }
+        }
+
+        // Delete all
+        async function deleteAll() {
+            if (!confirm('Xóa TẤT CẢ dữ liệu? Không thể hoàn tác!')) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/delete-all`, { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showAlert(`Đã xóa ${data.deletedCount} collocations`, 'success');
+                } else {
+                    showAlert('Lỗi: ' + data.message, 'error');
+                }
+            } catch (err) {
+                showAlert('Lỗi: ' + err.message, 'error');
+            }
+        }
+
+        // Init
+        loadQueue();
+    </script>
+</body>
+</html>
