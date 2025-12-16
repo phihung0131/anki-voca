@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý từ vựng</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-4xl mx-auto p-4">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-lg p-6 mb-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold">📖 Quản lý từ vựng</h1>
+                    <p class="text-sm opacity-90">Xem, thêm, sửa, xóa collocations</p>
+                </div>
+                <a href="/" class="bg-white/20 px-4 py-2 rounded-lg hover:bg-white/30">← Trang chủ</a>
+            </div>
+        </div>
+
+        <!-- Alert -->
+        <div id="alert" class="hidden mb-4 p-4 rounded-lg"></div>
+
+        <!-- Add/Edit Form -->
+        <div class="bg-white rounded-lg shadow p-4 mb-4">
+            <h2 class="text-lg font-semibold mb-3" id="formTitle">➕ Thêm collocation mới</h2>
+            <form id="collocationForm" class="space-y-3">
+                <input type="hidden" id="editId" value="">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Collocation *</label>
+                    <input type="text" id="collocation" required
+                           placeholder="strong coffee"
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">IPA</label>
+                    <input type="text" id="ipa"
+                           placeholder="/strɒŋ ˈkɒfi/"
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Nghĩa tiếng Việt</label>
+                    <input type="text" id="meaning"
+                           placeholder="cà phê đậm đà"
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Từ đồng nghĩa</label>
+                    <input type="text" id="synonyms"
+                           placeholder="intense coffee, robust coffee"
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700">
+                        💾 Lưu
+                    </button>
+                    <button type="button" onclick="cancelEdit()" id="cancelBtn" class="hidden flex-1 bg-gray-500 text-white py-2 rounded-lg font-medium hover:bg-gray-600">
+                        ✕ Hủy
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Search & Stats -->
+        <div class="bg-white rounded-lg shadow p-4 mb-4">
+            <div class="flex flex-col md:flex-row gap-3">
+                <input type="text" id="searchInput" placeholder="🔍 Tìm kiếm..."
+                       class="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="loadVocabulary()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                    Tìm kiếm
+                </button>
+            </div>
+            <div class="mt-3 text-sm text-gray-600">
+                Tổng: <span id="totalCount" class="font-bold">0</span> collocations
+            </div>
+        </div>
+
+        <!-- Vocabulary List -->
+        <div class="bg-white rounded-lg shadow p-4 mb-4">
+            <h2 class="text-lg font-semibold mb-3">📚 Danh sách từ vựng</h2>
+            <div id="vocabularyList" class="space-y-2">
+                <!-- Items will be inserted here -->
+            </div>
+            <div id="emptyState" class="text-center py-8 text-gray-400 hidden">
+                <div class="text-4xl mb-2">📭</div>
+                <p>Chưa có dữ liệu</p>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        <div class="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+            <button onclick="changePage(-1)" id="prevBtn"
+                    class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:bg-gray-300">
+                ← Trước
+            </button>
+            <div class="text-sm text-gray-600">
+                Trang <span id="currentPage">1</span> / <span id="totalPages">1</span>
+            </div>
+            <button onclick="changePage(1)" id="nextBtn"
+                    class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:bg-gray-300">
+                Sau →
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let currentPage = 1;
+        let pageSize = 10;
+        let totalItems = 0;
+        let searchQuery = '';
+
+        // Show alert
+        function showAlert(message, type = 'info') {
+            const alert = document.getElementById('alert');
+            const colors = {
+                success: 'bg-green-100 text-green-800 border-green-300',
+                error: 'bg-red-100 text-red-800 border-red-300',
+                info: 'bg-blue-100 text-blue-800 border-blue-300'
+            };
+            alert.className = `p-4 rounded-lg border ${colors[type] || colors.info}`;
+            alert.textContent = message;
+            alert.classList.remove('hidden');
+            setTimeout(() => alert.classList.add('hidden'), 3000);
+        }
+
+        // Load vocabulary with pagination
+        async function loadVocabulary() {
+            try {
+                searchQuery = document.getElementById('searchInput').value.trim();
+                const params = new URLSearchParams({
+                    page: currentPage,
+                    limit: pageSize,
+                    search: searchQuery
+                });
+
+                const res = await fetch(`${API_BASE}/api/vocabulary?${params}`);
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    totalItems = data.total;
+                    renderVocabulary(data.data);
+                    updatePagination(data.page, data.totalPages, data.total);
+                }
+            } catch (err) {
+                showAlert('Lỗi khi tải dữ liệu: ' + err.message, 'error');
+            }
+        }
+
+        // Render vocabulary list
+        function renderVocabulary(items) {
+            const list = document.getElementById('vocabularyList');
+            const empty = document.getElementById('emptyState');
+
+            if (items.length === 0) {
+                list.classList.add('hidden');
+                empty.classList.remove('hidden');
+                return;
+            }
+
+            list.classList.remove('hidden');
+            empty.classList.add('hidden');
+
+            list.innerHTML = items.map(item => `
+                <div class="border rounded-lg p-4 hover:bg-gray-50">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1">
+                            <h3 class="font-bold text-lg text-blue-600">${item.collocation}</h3>
+                            ${item.ipa ? `<p class="text-sm text-gray-500">${item.ipa}</p>` : ''}
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick='editVocabulary(${JSON.stringify(item)})'
+                                    class="text-blue-600 hover:text-blue-800">✏️</button>
+                            <button onclick="deleteVocabulary('${item._id}')"
+                                    class="text-red-600 hover:text-red-800">🗑️</button>
+                        </div>
+                    </div>
+                    ${item.meaning ? `<p class="text-gray-700 mb-1">🇻🇳 ${item.meaning}</p>` : ''}
+                    ${item.synonyms ? `<p class="text-sm text-gray-600">↔️ ${item.synonyms}</p>` : ''}
+                    <p class="text-xs text-gray-400 mt-2">Ngày thêm: ${new Date(item.createdAt).toLocaleDateString('vi-VN')}</p>
+                </div>
+            `).join('');
+        }
+
+        // Update pagination
+        function updatePagination(page, totalPages, total) {
+            document.getElementById('currentPage').textContent = page;
+            document.getElementById('totalPages').textContent = totalPages;
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('prevBtn').disabled = page <= 1;
+            document.getElementById('nextBtn').disabled = page >= totalPages;
+        }
+
+        // Change page
+        function changePage(delta) {
+            const totalPages = parseInt(document.getElementById('totalPages').textContent);
+            const newPage = currentPage + delta;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                loadVocabulary();
+            }
+        }
+
+        // Submit form
+        document.getElementById('collocationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const editId = document.getElementById('editId').value;
+            const data = {
+                collocation: document.getElementById('collocation').value.trim(),
+                ipa: document.getElementById('ipa').value.trim(),
+                meaning: document.getElementById('meaning').value.trim(),
+                synonyms: document.getElementById('synonyms').value.trim()
+            };
+
+            try {
+                let res;
+                if (editId) {
+                    // Update
+                    res = await fetch(`${API_BASE}/api/vocabulary/${editId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    // Create
+                    res = await fetch(`${API_BASE}/api/vocabulary`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                }
+
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showAlert(editId ? 'Đã cập nhật!' : 'Đã thêm mới!', 'success');
+                    resetForm();
+                    loadVocabulary();
+                } else {
+                    showAlert('Lỗi: ' + result.message, 'error');
+                }
+            } catch (err) {
+                showAlert('Lỗi: ' + err.message, 'error');
+            }
+        });
+
+        // Edit vocabulary
+        function editVocabulary(item) {
+            document.getElementById('formTitle').textContent = '✏️ Sửa collocation';
+            document.getElementById('editId').value = item._id;
+            document.getElementById('collocation').value = item.collocation;
+            document.getElementById('ipa').value = item.ipa || '';
+            document.getElementById('meaning').value = item.meaning || '';
+            document.getElementById('synonyms').value = item.synonyms || '';
+            document.getElementById('cancelBtn').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Cancel edit
+        function cancelEdit() {
+            resetForm();
+        }
+
+        // Reset form
+        function resetForm() {
+            document.getElementById('formTitle').textContent = '➕ Thêm collocation mới';
+            document.getElementById('collocationForm').reset();
+            document.getElementById('editId').value = '';
+            document.getElementById('cancelBtn').classList.add('hidden');
+        }
+
+        // Delete vocabulary
+        async function deleteVocabulary(id) {
+            if (!confirm('Xóa collocation này?')) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/vocabulary/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showAlert('Đã xóa!', 'success');
+                    loadVocabulary();
+                } else {
+                    showAlert('Lỗi: ' + data.message, 'error');
+                }
+            } catch (err) {
+                showAlert('Lỗi: ' + err.message, 'error');
+            }
+        }
+
+        // Search on Enter key
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                currentPage = 1;
+                loadVocabulary();
+            }
+        });
+
+        // Init
+        loadVocabulary();
+    </script>
+</body>
+</html>

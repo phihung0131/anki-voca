@@ -245,6 +245,130 @@ app.post('/api/save-apikey', async (req, res) => {
     }
 });
 
+// ============ VOCABULARY MANAGEMENT APIs ============
+
+// 8. Lấy danh sách với phân trang và tìm kiếm
+app.get('/api/vocabulary', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || '';
+        const skip = (page - 1) * limit;
+
+        // Tạo query filter
+        const filter = search ? {
+            $or: [
+                { collocation: new RegExp(search, 'i') },
+                { meaning: new RegExp(search, 'i') },
+                { synonyms: new RegExp(search, 'i') }
+            ]
+        } : {};
+
+        // Đếm tổng số
+        const total = await Collocation.countDocuments(filter);
+        const totalPages = Math.ceil(total / limit);
+
+        // Lấy dữ liệu
+        const data = await Collocation.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.json({
+            status: 'success',
+            data,
+            page,
+            limit,
+            total,
+            totalPages
+        });
+    } catch (error) {
+        console.error('❌ Error fetching vocabulary:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// 9. Thêm collocation mới
+app.post('/api/vocabulary', async (req, res) => {
+    try {
+        const { collocation, ipa, meaning, synonyms } = req.body;
+
+        if (!collocation) {
+            return res.status(400).json({ status: 'error', message: 'Cần có collocation' });
+        }
+
+        const newItem = new Collocation({
+            collocation,
+            ipa,
+            meaning,
+            synonyms
+        });
+
+        await newItem.save();
+
+        res.json({
+            status: 'success',
+            message: 'Đã thêm collocation',
+            data: newItem
+        });
+    } catch (error) {
+        if (error.code === 11000) {
+            return res.status(400).json({ status: 'error', message: 'Collocation đã tồn tại' });
+        }
+        console.error('❌ Error adding vocabulary:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// 10. Sửa collocation
+app.put('/api/vocabulary/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { collocation, ipa, meaning, synonyms } = req.body;
+
+        const updated = await Collocation.findByIdAndUpdate(
+            id,
+            { collocation, ipa, meaning, synonyms },
+            { new: true, runValidators: true }
+        );
+
+        if (!updated) {
+            return res.status(404).json({ status: 'error', message: 'Không tìm thấy' });
+        }
+
+        res.json({
+            status: 'success',
+            message: 'Đã cập nhật',
+            data: updated
+        });
+    } catch (error) {
+        console.error('❌ Error updating vocabulary:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// 11. Xóa collocation
+app.delete('/api/vocabulary/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const deleted = await Collocation.findByIdAndDelete(id);
+
+        if (!deleted) {
+            return res.status(404).json({ status: 'error', message: 'Không tìm thấy' });
+        }
+
+        res.json({
+            status: 'success',
+            message: 'Đã xóa',
+            data: deleted
+        });
+    } catch (error) {
+        console.error('❌ Error deleting vocabulary:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
 // ============ START SERVER ============
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
