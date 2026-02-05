@@ -27,8 +27,9 @@
         <!-- Add Word Section -->
         <div class="bg-white rounded-lg shadow p-4 mb-4">
             <h2 class="text-lg font-semibold mb-3">➕ Thêm từ</h2>
-            <input type="text" id="wordInput" placeholder="Nhập từ tiếng Anh"
-                   class="w-full px-4 py-2 border rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <textarea id="wordInput" placeholder="Nhập từ tiếng Anh (mỗi từ 1 dòng)"
+                   rows="4"
+                   class="w-full px-4 py-2 border rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
             <button onclick="addWord()"
                     class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">
                 Thêm vào queue
@@ -96,36 +97,72 @@
 
         // Add word to queue
         async function addWord() {
-            const word = document.getElementById('wordInput').value.trim();
-            if (!word) return showAlert('Vui lòng nhập từ', 'error');
+            const input = document.getElementById('wordInput').value.trim();
+            if (!input) return showAlert('Vui lòng nhập từ', 'error');
 
-            if (!/^[a-zA-Z\s-]+$/.test(word)) {
-                return showAlert('Chỉ nhập chữ tiếng Anh', 'error');
+            // Tách các từ theo dòng
+            const words = input.split('\n')
+                .map(w => w.trim())
+                .filter(w => w.length > 0);
+
+            if (words.length === 0) {
+                return showAlert('Vui lòng nhập từ', 'error');
             }
 
-            // Check if exists
-            try {
-                const res = await fetch(`${API_BASE}/api/check-word`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ word })
-                });
-                const data = await res.json();
-                if (data.exists) {
-                    return showAlert('Từ đã tồn tại trong database', 'error');
+            let addedCount = 0;
+            let existsCount = 0;
+            let invalidCount = 0;
+            let duplicateCount = 0;
+
+            for (const word of words) {
+                // Kiểm tra định dạng
+                if (!/^[a-zA-Z\s-]+$/.test(word)) {
+                    invalidCount++;
+                    continue;
                 }
-            } catch (err) {
-                console.error(err);
+
+                // Kiểm tra duplicate trong queue
+                if (queue.includes(word)) {
+                    duplicateCount++;
+                    continue;
+                }
+
+                // Kiểm tra tồn tại trong database
+                try {
+                    const res = await fetch(`${API_BASE}/api/check-word`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ word })
+                    });
+                    const data = await res.json();
+                    if (data.exists) {
+                        existsCount++;
+                        continue;
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+
+                // Thêm vào queue
+                queue.push(word);
+                addedCount++;
             }
 
-            // Add to queue
-            if (!queue.includes(word)) {
-                queue.push(word);
-                document.getElementById('wordInput').value = '';
-                loadQueue();
-                showAlert(`Đã thêm "${word}"`, 'success');
+            // Clear input
+            document.getElementById('wordInput').value = '';
+            loadQueue();
+
+            // Hiển thị thông báo
+            let message = '';
+            if (addedCount > 0) message += `Đã thêm ${addedCount} từ. `;
+            if (existsCount > 0) message += `${existsCount} từ đã tồn tại. `;
+            if (duplicateCount > 0) message += `${duplicateCount} từ trùng trong queue. `;
+            if (invalidCount > 0) message += `${invalidCount} từ không hợp lệ.`;
+
+            if (addedCount > 0) {
+                showAlert(message.trim(), 'success');
             } else {
-                showAlert('Từ đã có trong queue', 'error');
+                showAlert(message.trim() || 'Không có từ nào được thêm', 'error');
             }
         }
 
