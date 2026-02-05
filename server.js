@@ -32,6 +32,90 @@ const collocationSchema = new mongoose.Schema({
 
 const Collocation = mongoose.model('Collocation', collocationSchema);
 
+// Queue Schema
+const queueSchema = new mongoose.Schema({
+    word: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+
+const Queue = mongoose.model('Queue', queueSchema);
+
+// ============ QUEUE APIs ============
+
+// Get queue
+app.get('/api/queue', async (req, res) => {
+    try {
+        const queue = await Queue.find({}).sort({ createdAt: 1 });
+        res.json({ status: 'success', data: queue });
+    } catch (error) {
+        console.error('❌ Error fetching queue:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// Add to queue
+app.post('/api/queue', async (req, res) => {
+    try {
+        const { words } = req.body;
+        
+        if (!Array.isArray(words) || words.length === 0) {
+            return res.status(400).json({ status: 'error', message: 'Cần gửi array words' });
+        }
+
+        const addedWords = [];
+        for (const word of words) {
+            // Check if already in queue
+            const existsInQueue = await Queue.findOne({ word });
+            if (!existsInQueue) {
+                const newItem = new Queue({ word });
+                await newItem.save();
+                addedWords.push(word);
+            }
+        }
+
+        res.json({ 
+            status: 'success', 
+            addedCount: addedWords.length,
+            message: `Đã thêm ${addedWords.length} từ vào queue`
+        });
+    } catch (error) {
+        console.error('❌ Error adding to queue:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// Remove from queue
+app.delete('/api/queue/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deleted = await Queue.findByIdAndDelete(id);
+        
+        if (!deleted) {
+            return res.status(404).json({ status: 'error', message: 'Không tìm thấy' });
+        }
+
+        res.json({ status: 'success', message: 'Đã xóa khỏi queue' });
+    } catch (error) {
+        console.error('❌ Error removing from queue:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+// Clear queue
+app.post('/api/queue/clear', async (req, res) => {
+    try {
+        const result = await Queue.deleteMany({});
+        res.json({ 
+            status: 'success', 
+            deletedCount: result.deletedCount,
+            message: `Đã xóa ${result.deletedCount} từ khỏi queue`
+        });
+    } catch (error) {
+        console.error('❌ Error clearing queue:', error.message);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
 // ============ API ROUTES ============
 
 // 1. Thêm 1 hoặc nhiều từ

@@ -78,7 +78,6 @@
     </div>
 
     <script>
-        let queue = [];
         const API_BASE = '';
 
         // Show alert
@@ -112,18 +111,13 @@
             let addedCount = 0;
             let existsCount = 0;
             let invalidCount = 0;
-            let duplicateCount = 0;
+
+            const validWords = [];
 
             for (const word of words) {
                 // Kiểm tra định dạng
                 if (!/^[a-zA-Z\s-]+$/.test(word)) {
                     invalidCount++;
-                    continue;
-                }
-
-                // Kiểm tra duplicate trong queue
-                if (queue.includes(word)) {
-                    duplicateCount++;
                     continue;
                 }
 
@@ -143,9 +137,25 @@
                     console.error(err);
                 }
 
-                // Thêm vào queue
-                queue.push(word);
-                addedCount++;
+                validWords.push(word);
+            }
+
+            // Thêm vào queue trong MongoDB
+            if (validWords.length > 0) {
+                try {
+                    const res = await fetch(`${API_BASE}/api/queue`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ words: validWords })
+                    });
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        addedCount = data.addedCount;
+                    }
+                } catch (err) {
+                    showAlert('Lỗi kết nối: ' + err.message, 'error');
+                    return;
+                }
             }
 
             // Clear input
@@ -156,7 +166,6 @@
             let message = '';
             if (addedCount > 0) message += `Đã thêm ${addedCount} từ. `;
             if (existsCount > 0) message += `${existsCount} từ đã tồn tại. `;
-            if (duplicateCount > 0) message += `${duplicateCount} từ trùng trong queue. `;
             if (invalidCount > 0) message += `${invalidCount} từ không hợp lệ.`;
 
             if (addedCount > 0) {
@@ -166,53 +175,82 @@
             }
         }
 
-        // Load queue
-        function loadQueue() {
-            const list = document.getElementById('queueList');
-            const count = document.getElementById('queueCount');
-            const genBtn = document.getElementById('genBtn');
+        // Load queue from MongoDB
+        async function loadQueue() {
+            try {
+                const res = await fetch(`${API_BASE}/api/queue`);
+                const data = await res.json();
+                
+                const queue = data.data || [];
+                const list = document.getElementById('queueList');
+                const count = document.getElementById('queueCount');
+                const genBtn = document.getElementById('genBtn');
 
-            count.textContent = queue.length;
-            genBtn.disabled = queue.length === 0;
+                count.textContent = queue.length;
+                genBtn.disabled = queue.length === 0;
 
-            if (queue.length === 0) {
-                list.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Chưa có từ nào</p>';
-                return;
+                if (queue.length === 0) {
+                    list.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Chưa có từ nào</p>';
+                    return;
+                }
+
+                list.innerHTML = queue.map((item) => `
+                    <div class="flex justify-between items-center bg-gray-50 p-3 rounded">
+                        <span class="font-medium">${item.word}</span>
+                        <button onclick="removeWord('${item._id}')" class="text-red-600 hover:text-red-800">✕</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Error loading queue:', err);
             }
-
-            list.innerHTML = queue.map((word, idx) => `
-                <div class="flex justify-between items-center bg-gray-50 p-3 rounded">
-                    <span class="font-medium">${word}</span>
-                    <button onclick="removeWord(${idx})" class="text-red-600 hover:text-red-800">✕</button>
-                </div>
-            `).join('');
         }
 
-        // Remove word
-        function removeWord(idx) {
-            queue.splice(idx, 1);
-            loadQueue();
+        // Remove word from MongoDB queue
+        async function removeWord(id) {
+            try {
+                const res = await fetch(`${API_BASE}/api/queue/${id}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    loadQueue();
+                }
+            } catch (err) {
+                showAlert('Lỗi: ' + err.message, 'error');
+            }
         }
 
         // Generate collocations
         async function generateCollocations() {
-            if (queue.length === 0) return;
-
             const genBtn = document.getElementById('genBtn');
             genBtn.disabled = true;
             genBtn.textContent = '⏳ Đang xử lý...';
 
             try {
+                // Get queue from MongoDB
+                const queueRes = await fetch(`${API_BASE}/api/queue`);
+                const queueData = await queueRes.json();
+                const queue = queueData.data || [];
+
+                if (queue.length === 0) {
+                    showAlert('Queue trống', 'error');
+                    return;
+                }
+
+                const words = queue.map(item => item.word);
+
                 const res = await fetch(`${API_BASE}/api/generate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ words: queue })
+                    body: JSON.stringify({ words })
                 });
 
                 const data = await res.json();
                 if (data.status === 'success') {
                     showAlert(`Đã tạo ${data.count} collocations!`, 'success');
-                    queue = [];
+                    
+                    // Clear queue after successful generation
+                    await fetch(`${API_BASE}/api/queue/clear`, { method: 'POST' });
                     loadQueue();
                 } else {
                     showAlert('Lỗi: ' + data.message, 'error');
