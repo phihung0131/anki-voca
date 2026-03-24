@@ -241,27 +241,37 @@ app.post('/api/generate', async (req, res) => {
             return res.status(500).json({ status: 'error', message: 'API key chưa được cấu hình' });
         }
 
-        // Tạo prompt
-        const prompt = `
-Tạo collocations cho danh sách từ sau: ${words.map(w => `"${w}"`).join(", ")}
+        // Tạo prompt rõ ràng hơn
+        const prompt = `Generate collocations for these English words: ${words.map(w => `"${w}"`).join(", ")}
 
-Yêu cầu:
-1. Với mỗi từ, tạo 1-3 collocations phổ biến nhất
-2. Trả về JSON:
+Requirements:
+- For each word, create 1-3 common collocations
+- Return ONLY valid JSON (no extra text before or after)
+- Required fields for each item:
+  * collocation: English phrase (required)
+  * ipa: IPA pronunciation
+  * meaning: Vietnamese meaning
+  * synonyms: Similar English phrases
+  * anonyms: Opposite/antonym English phrases
+  * example_en: English example sentence
+  * example_vi: Vietnamese example sentence
+
+Return this exact JSON format:
 {
     "results": [
         {
             "collocation": "strong coffee",
             "ipa": "/strɒŋ ˈkɒfi/",
             "meaning": "cà phê đậm đà",
-            "synonyms": "intense coffee",
-            "anonyms": "weak coffee",
+            "synonyms": "intense coffee, robust coffee",
+            "anonyms": "weak coffee, mild coffee",
             "example_en": "I like strong coffee in the morning",
             "example_vi": "Tôi thích cà phê đậm vào buổi sáng"
-        }, ...
+        }
     ]
-}
-`;
+}`;
+
+        console.log('📤 Calling Gemini API with words:', words);
 
         // Gọi Gemini API
         const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
@@ -276,28 +286,56 @@ Yêu cầu:
         const text = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!text) {
+            console.error('❌ No response text from AI');
             return res.status(500).json({ status: 'error', message: 'Không nhận được phản hồi từ AI' });
         }
 
-        // Parse JSON
+        console.log('📥 AI Response:', text.substring(0, 200) + '...');
+
+        // Parse JSON - tìm JSON object trong response
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
+            console.error('❌ No JSON found in response:', text);
             return res.status(500).json({ status: 'error', message: 'Không tìm thấy JSON trong response' });
         }
 
         const parsed = JSON.parse(jsonMatch[0]);
-        const collocations = parsed.results || [];
+        const rawCollocations = parsed.results || [];
+
+        // Validate và format data
+        const collocations = rawCollocations.map(item => ({
+            collocation: item.collocation?.trim() || '',
+            ipa: item.ipa?.trim() || '',
+            meaning: item.meaning?.trim() || '',
+            synonyms: item.synonyms?.trim() || '',
+            anonyms: item.anonyms?.trim() || '',
+            example_en: item.example_en?.trim() || '',
+            example_vi: item.example_vi?.trim() || ''
+        })).filter(item => item.collocation); // Chỉ lấy items có collocation
+
+        console.log(`✅ Processed ${collocations.length} collocations`);
+        console.log('Sample:', collocations[0]);
 
         // Lưu vào database
         if (collocations.length > 0) {
-            await Collocation.insertMany(collocations, { ordered: false }).catch(err => {
-                if (err.code !== 11000) throw err; // Ignore duplicates
+            const result = await Collocation.insertMany(collocations, { ordered: false }).catch(err => {
+                if (err.code === 11000) {
+                    // Wenn duplicates, return inserted docs
+                    return err.insertedDocs || [];
+                }
+                throw err;
             });
+            console.log(`💾 Saved ${Array.isArray(result) ? result.length : result?.insertedCount || 1} to database`);
         }
 
-        res.json({ status: 'success', count: collocations.length, message: `Đã tạo ${collocations.length} collocations` });
+        res.json({ 
+            status: 'success', 
+            count: collocations.length, 
+            message: `Đã tạo ${collocations.length} collocations` 
+        });
     } catch (error) {
         console.error('❌ Error generating:', error.message);
+        console.error('Full error:', error);
         res.status(500).json({ status: 'error', message: error.message });
     }
 });
