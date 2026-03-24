@@ -51,6 +51,24 @@
                            placeholder="intense coffee, robust coffee"
                            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
                 </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Từ trái nghĩa (Anonyms)</label>
+                    <input type="text" id="anonyms"
+                           placeholder="weak coffee, mild coffee"
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Ví dụ tiếng Anh</label>
+                    <input type="text" id="example_en"
+                           placeholder="I like strong coffee in the morning"
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Ví dụ tiếng Việt</label>
+                    <input type="text" id="example_vi"
+                           placeholder="Tôi thích cà phê đậm vào buổi sáng"
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
                 <div class="flex gap-2">
                     <button type="submit" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700">
                         💾 Lưu
@@ -177,7 +195,10 @@
                         </div>
                     </div>
                     ${item.meaning ? `<p class="text-gray-700 mb-1">🇻🇳 ${item.meaning}</p>` : ''}
-                    ${item.synonyms ? `<p class="text-sm text-gray-600">↔️ ${item.synonyms}</p>` : ''}
+                    ${item.synonyms ? `<p class="text-sm text-gray-600">↔️ Đ.nghĩa: ${item.synonyms}</p>` : ''}
+                    ${item.anonyms ? `<p class="text-sm text-gray-600">⟷ Tr.nghĩa: ${item.anonyms}</p>` : ''}
+                    ${item.example_en ? `<p class="text-sm text-gray-600 italic">📝 EN: ${item.example_en}</p>` : ''}
+                    ${item.example_vi ? `<p class="text-sm text-gray-600 italic">📝 VI: ${item.example_vi}</p>` : ''}
                     <p class="text-xs text-gray-400 mt-2">Ngày thêm: ${new Date(item.createdAt).toLocaleDateString('vi-VN')}</p>
                 </div>
             `).join('');
@@ -211,7 +232,10 @@
                 collocation: document.getElementById('collocation').value.trim(),
                 ipa: document.getElementById('ipa').value.trim(),
                 meaning: document.getElementById('meaning').value.trim(),
-                synonyms: document.getElementById('synonyms').value.trim()
+                synonyms: document.getElementById('synonyms').value.trim(),
+                anonyms: document.getElementById('anonyms').value.trim(),
+                example_en: document.getElementById('example_en').value.trim(),
+                example_vi: document.getElementById('example_vi').value.trim()
             };
 
             try {
@@ -250,6 +274,9 @@
             document.getElementById('formTitle').textContent = '✏️ Sửa collocation';
             document.getElementById('editId').value = item._id;
             document.getElementById('collocation').value = item.collocation;
+            document.getElementById('anonyms').value = item.anonyms || '';
+            document.getElementById('example_en').value = item.example_en || '';
+            document.getElementById('example_vi').value = item.example_vi || '';
             document.getElementById('ipa').value = item.ipa || '';
             document.getElementById('meaning').value = item.meaning || '';
             document.getElementById('synonyms').value = item.synonyms || '';

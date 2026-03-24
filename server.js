@@ -15,7 +15,13 @@ app.use(express.static('public')); // Serve static files
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/vocabulary';
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
+    connectTimeoutMS: 60000,     // Tăng timeout thành 60 giây
+    socketTimeoutMS: 60000,
+    serverSelectionTimeoutMS: 60000,
+    retryWrites: true,
+    maxPoolSize: 10,
+    minPoolSize: 2
 });
 
 mongoose.connection.on('connected', () => console.log('✅ MongoDB connected'));
@@ -27,6 +33,9 @@ const collocationSchema = new mongoose.Schema({
     ipa: String,
     meaning: String,
     synonyms: String,
+    anonyms: String,
+    example_en: String,
+    example_vi: String,
     createdAt: { type: Date, default: Date.now }
 });
 
@@ -178,7 +187,7 @@ app.get('/api/export-csv', async (req, res) => {
         }
 
         // Chọn fields để export
-        const fields = ['collocation', 'ipa', 'meaning', 'synonyms']    ;
+        const fields = ['collocation', 'ipa', 'meaning', 'synonyms', 'anonyms', 'example_en', 'example_vi'];
         const csv = json2csv(data, { fields });
 
         // Tạo response với CSV
@@ -237,7 +246,7 @@ app.post('/api/generate', async (req, res) => {
 Tạo collocations cho danh sách từ sau: ${words.map(w => `"${w}"`).join(", ")}
 
 Yêu cầu:
-1. Với mỗi từ, tạo 1-5 collocations phổ biến nhất
+1. Với mỗi từ, tạo 1-3 collocations phổ biến nhất
 2. Trả về JSON:
 {
     "results": [
@@ -245,7 +254,10 @@ Yêu cầu:
             "collocation": "strong coffee",
             "ipa": "/strɒŋ ˈkɒfi/",
             "meaning": "cà phê đậm đà",
-            "synonyms": "intense coffee"
+            "synonyms": "intense coffee",
+            "anonyms": "weak coffee",
+            "example_en": "I like strong coffee in the morning",
+            "example_vi": "Tôi thích cà phê đậm vào buổi sáng"
         }, ...
     ]
 }
@@ -375,7 +387,7 @@ app.get('/api/vocabulary', async (req, res) => {
 // 9. Thêm collocation mới
 app.post('/api/vocabulary', async (req, res) => {
     try {
-        const { collocation, ipa, meaning, synonyms } = req.body;
+        const { collocation, ipa, meaning, synonyms, anonyms, example_en, example_vi } = req.body;
 
         if (!collocation) {
             return res.status(400).json({ status: 'error', message: 'Cần có collocation' });
@@ -385,7 +397,10 @@ app.post('/api/vocabulary', async (req, res) => {
             collocation,
             ipa,
             meaning,
-            synonyms
+            synonyms,
+            anonyms,
+            example_en,
+            example_vi
         });
 
         await newItem.save();
@@ -408,11 +423,11 @@ app.post('/api/vocabulary', async (req, res) => {
 app.put('/api/vocabulary/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { collocation, ipa, meaning, synonyms } = req.body;
+        const { collocation, ipa, meaning, synonyms, anonyms, example_en, example_vi } = req.body;
 
         const updated = await Collocation.findByIdAndUpdate(
             id,
-            { collocation, ipa, meaning, synonyms },
+            { collocation, ipa, meaning, synonyms, anonyms, example_en, example_vi },
             { new: true, runValidators: true }
         );
 
