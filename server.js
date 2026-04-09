@@ -2,6 +2,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
 const json2csv = require('json2csv').parse;
 const fs = require('fs');
 require('dotenv').config();
@@ -9,7 +10,7 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 app.use(cors());
-app.use(express.static('public')); // Serve static files
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ============ MONGODB CONNECTION ============
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/vocabulary';
@@ -287,6 +288,7 @@ Return this exact JSON format:
 
         if (!text) {
             console.error('❌ No response text from AI');
+            console.log(aiData);
             return res.status(500).json({ status: 'error', message: 'Không nhận được phản hồi từ AI' });
         }
 
